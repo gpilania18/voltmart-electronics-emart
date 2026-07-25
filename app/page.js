@@ -9,7 +9,8 @@ import {
   Cpu, Wifi, Radar, Package, Cog, Bot, Cloud, CircuitBoard, Battery, Monitor,
   Wrench, Box, Plane, Workflow, BrainCircuit, MemoryStick, GraduationCap, Layers,
   Sparkles, TrendingUp, Award, SlidersHorizontal,
-  Download, FileText, MessageSquare, ShoppingBag, Flame, Gift, Clock, MapPin
+  Download, FileText, MessageSquare, ShoppingBag, Flame, Gift, Clock, MapPin,
+  LogOut, LayoutDashboard, GitCompare, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,33 +22,63 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
+
+import { useAuth, useCart, useCompare, useWish, inr } from '@/lib/store';
+import AuthModal from '@/components/store/AuthModal';
+import CheckoutView from '@/components/store/CheckoutView';
+import DashboardView from '@/components/store/DashboardView';
+import AdminView from '@/components/store/AdminView';
+import CompareView from '@/components/store/CompareView';
 
 const iconMap = { Cpu, Wifi, Radar, Package, Cog, Bot, Cloud, CircuitBoard, Battery, Monitor, Wrench, Box, Plane, Workflow, BrainCircuit, MemoryStick, GraduationCap, Zap, Microchip: Cpu };
-const inr = (n) => `₹${n.toLocaleString('en-IN')}`;
 
-const useCartStore = () => {
-  const [items, setItems] = useState([]);
-  useEffect(() => { try { setItems(JSON.parse(localStorage.getItem('voltmart_cart') || '[]')); } catch {} }, []);
-  const save = (next) => { setItems(next); localStorage.setItem('voltmart_cart', JSON.stringify(next)); };
-  const add = (p, qty = 1) => {
-    const ex = items.find(i => i.slug === p.slug);
-    const next = ex ? items.map(i => i.slug === p.slug ? { ...i, qty: i.qty + qty } : i) : [...items, { slug: p.slug, name: p.name, price: p.price, image: p.image, qty }];
-    save(next); toast.success(`Added ${p.name} to cart`);
-  };
-  const remove = (slug) => save(items.filter(i => i.slug !== slug));
-  const update = (slug, qty) => save(items.map(i => i.slug === slug ? { ...i, qty: Math.max(1, qty) } : i));
-  const count = items.reduce((s, i) => s + i.qty, 0);
-  const total = items.reduce((s, i) => s + i.price * i.qty, 0);
-  return { items, add, remove, update, count, total };
-};
-const useWishStore = () => {
-  const [items, setItems] = useState([]);
-  useEffect(() => { try { setItems(JSON.parse(localStorage.getItem('voltmart_wish') || '[]')); } catch {} }, []);
-  const toggle = (slug) => { const next = items.includes(slug) ? items.filter(s => s !== slug) : [...items, slug]; setItems(next); localStorage.setItem('voltmart_wish', JSON.stringify(next)); };
-  return { items, toggle, has: (s) => items.includes(s) };
+// -------- Product Card --------
+const ProductCard = ({ p, onOpen, onAdd, wishHas, onWish, compareHas, onCompare }) => {
+  const discount = p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -4 }} transition={{ duration: 0.25 }} className="group relative rounded-2xl overflow-hidden bg-white/[0.03] border border-white/5 hover:border-white/20 hover:bg-white/[0.05] transition cursor-pointer">
+      <div onClick={onOpen} className="relative aspect-square overflow-hidden bg-black/40">
+        <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+        <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {p.bestSeller && <Badge className="bg-secondary/90 hover:bg-secondary text-white text-[10px] border-0"><Award className="w-2.5 h-2.5 mr-1" />Best Seller</Badge>}
+          {p.new && <Badge className="bg-primary/90 hover:bg-primary text-white text-[10px] border-0">NEW</Badge>}
+          {discount > 0 && <Badge className="bg-red-500/90 hover:bg-red-500 text-white text-[10px] border-0">-{discount}%</Badge>}
+        </div>
+        <div className="absolute top-2 right-2 flex flex-col gap-1.5">
+          <button onClick={(e) => { e.stopPropagation(); onWish(p.slug); }} className="w-8 h-8 rounded-full glass-strong flex items-center justify-center hover:scale-110 transition">
+            <Heart className={`w-4 h-4 ${wishHas ? 'fill-red-500 text-red-500' : 'text-white'}`} />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onCompare(p); }} className="w-8 h-8 rounded-full glass-strong flex items-center justify-center hover:scale-110 transition" title="Compare">
+            <GitCompare className={`w-4 h-4 ${compareHas ? 'text-primary' : 'text-white'}`} />
+          </button>
+        </div>
+      </div>
+      <div className="p-3.5">
+        <div className="text-[11px] uppercase tracking-wide text-white/40 mb-1">{p.brand}</div>
+        <h3 onClick={onOpen} className="text-sm font-medium leading-snug line-clamp-2 min-h-[2.5rem] hover:text-primary transition">{p.name}</h3>
+        <div className="flex items-center gap-1 mt-2 text-xs">
+          <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+          <span className="text-white/80">{p.rating}</span>
+          <span className="text-white/40">({p.reviews})</span>
+          <span className="ml-auto text-white/40">{p.sold}+ sold</span>
+        </div>
+        <div className="mt-2.5 flex items-end justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">{inr(p.price)}</div>
+            {p.mrp > p.price && <div className="text-xs text-white/40 line-through">{inr(p.mrp)}</div>}
+          </div>
+          <Button size="sm" onClick={(e) => { e.stopPropagation(); onAdd(p); }} className="bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/30 h-8 px-3 text-xs">
+            <Plus className="w-3.5 h-3.5 mr-1" />Add
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  );
 };
 
-const Header = ({ setView, cart, wish, onSearchOpen }) => (
+// -------- Header --------
+const Header = ({ setView, cart, wish, compare, user, onSearchOpen, onLogin, onLogout }) => (
   <header className="sticky top-0 z-40 border-b border-white/5 glass-strong">
     <div className="container flex items-center gap-4 h-16">
       <button onClick={() => setView({ name: 'home' })} className="flex items-center gap-2 font-display text-xl font-bold shrink-0">
@@ -61,18 +92,22 @@ const Header = ({ setView, cart, wish, onSearchOpen }) => (
         <button onClick={() => setView({ name: 'products', filters: { deal: true } })} className="px-3 py-2 text-white/80 hover:text-white transition">Deals</button>
         <button onClick={() => setView({ name: 'products', filters: { bestSeller: true } })} className="px-3 py-2 text-white/80 hover:text-white transition">Best Sellers</button>
         <button onClick={() => setView({ name: 'products', filters: { trending: true } })} className="px-3 py-2 text-white/80 hover:text-white transition">Trending</button>
-        <button className="px-3 py-2 text-white/80 hover:text-white transition">Brands</button>
-        <button className="px-3 py-2 text-white/80 hover:text-white transition">Support</button>
       </nav>
       <button onClick={onSearchOpen} className="flex-1 max-w-2xl flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/5 border border-white/10 hover:border-white/20 text-white/50 text-sm transition">
-        <Search className="w-4 h-4" />
-        <span className="flex-1 text-left">Search 5000+ products, SKUs, datasheets…</span>
+        <Sparkles className="w-4 h-4 text-primary" />
+        <span className="flex-1 text-left">Ask VoltAI or search products…</span>
         <kbd className="hidden md:inline text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10">⌘K</kbd>
       </button>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="relative">
+        {compare.items.length > 0 && (
+          <Button variant="ghost" size="icon" onClick={() => setView({ name: 'compare' })} className="relative hidden sm:inline-flex" title="Compare">
+            <GitCompare className="w-5 h-5" />
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-[10px] rounded-full bg-primary flex items-center justify-center">{compare.items.length}</span>
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" onClick={() => user ? setView({ name: 'dashboard' }) : null} className="relative">
           <Heart className="w-5 h-5" />
-          {wish.items.length > 0 && <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-[10px] rounded-full bg-secondary flex items-center justify-center">{wish.items.length}</span>}
+          {wish.slugs.length > 0 && <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-[10px] rounded-full bg-secondary flex items-center justify-center">{wish.slugs.length}</span>}
         </Button>
         <Sheet>
           <SheetTrigger asChild>
@@ -81,52 +116,119 @@ const Header = ({ setView, cart, wish, onSearchOpen }) => (
               {cart.count > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 text-[10px] rounded-full bg-primary flex items-center justify-center glow-blue">{cart.count}</span>}
             </Button>
           </SheetTrigger>
-          <CartSheet cart={cart} />
+          <CartSheet cart={cart} onCheckout={() => setView({ name: 'checkout' })} />
         </Sheet>
-        <Button variant="ghost" size="icon" className="hidden md:inline-flex"><User className="w-5 h-5" /></Button>
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center font-bold text-sm">{user.name[0].toUpperCase()}</button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-[#0a0c14] border-white/10 text-white w-56">
+              <DropdownMenuLabel className="text-white/60"><div className="text-white font-medium">{user.name}</div><div className="text-xs">{user.email}</div></DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem onClick={() => setView({ name: 'dashboard' })} className="focus:bg-white/5"><User className="w-4 h-4 mr-2" />My Account</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setView({ name: 'dashboard' })} className="focus:bg-white/5"><Package className="w-4 h-4 mr-2" />My Orders</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setView({ name: 'dashboard' })} className="focus:bg-white/5"><Heart className="w-4 h-4 mr-2" />Wishlist</DropdownMenuItem>
+              {user.role === 'admin' && <>
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem onClick={() => setView({ name: 'admin' })} className="focus:bg-primary/10 text-primary"><LayoutDashboard className="w-4 h-4 mr-2" />Admin Dashboard</DropdownMenuItem>
+              </>}
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem onClick={onLogout} className="focus:bg-red-500/10 text-red-400"><LogOut className="w-4 h-4 mr-2" />Logout</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={onLogin} className="hidden sm:inline-flex"><User className="w-4 h-4 mr-1.5" />Sign in</Button>
+        )}
       </div>
     </div>
   </header>
 );
 
+// -------- AI Search Dialog --------
 const SearchDialog = ({ open, onClose, setView }) => {
   const [q, setQ] = useState('');
   const [results, setResults] = useState({ suggestions: [], categories: [] });
+  const [aiResults, setAiResults] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [mode, setMode] = useState('quick'); // 'quick' | 'ai'
+
   useEffect(() => {
-    if (!q.trim()) { setResults({ suggestions: [], categories: [] }); return; }
+    if (!q.trim() || mode !== 'quick') { setResults({ suggestions: [], categories: [] }); return; }
     const t = setTimeout(async () => {
       const r = await fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`).then(r => r.json());
       setResults(r);
     }, 150);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, mode]);
+
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  useEffect(() => { if (!open) { setQ(''); setAiResults(null); setMode('quick'); } }, [open]);
+
+  const askAI = async (query) => {
+    setMode('ai'); setAiLoading(true); setAiResults(null);
+    const r = await fetch('/api/ai-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+    const d = await r.json();
+    setAiResults(d); setAiLoading(false);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (q.trim()) askAI(q);
+  };
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center pt-20 p-4" onClick={onClose}>
           <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="w-full max-w-2xl glass-strong rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 p-4 border-b border-white/10">
-              <Sparkles className="w-5 h-5 text-primary" />
-              <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Ask VoltAI: 'ESP32 with camera under ₹1000'…" className="flex-1 bg-transparent outline-none text-white placeholder:text-white/40" />
+            <form onSubmit={handleSubmit} className="flex items-center gap-3 p-4 border-b border-white/10">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center glow-blue"><Sparkles className="w-4 h-4 text-white" /></div>
+              <input autoFocus value={q} onChange={e => { setQ(e.target.value); setMode('quick'); }} placeholder='Try: "ESP32 with camera under ₹1000"' className="flex-1 bg-transparent outline-none text-white placeholder:text-white/40" />
+              {q && <Button type="submit" size="sm" className="bg-primary hover:bg-primary/90 h-8">Ask AI →</Button>}
               <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10">ESC</kbd>
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {!q && (
-                <div className="p-4 text-sm text-white/60">
-                  <div className="mb-3 font-medium text-white/80">Try searching</div>
-                  <div className="flex flex-wrap gap-2">
-                    {['Arduino Uno R4', 'Raspberry Pi 5', 'ESP32-CAM', 'DHT22', 'Servo motor', 'Jetson Nano', 'LiPo battery'].map(s => (
-                      <button key={s} onClick={() => setQ(s)} className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs">{s}</button>
-                    ))}
-                  </div>
+            </form>
+            <div className="max-h-[65vh] overflow-y-auto">
+              {mode === 'ai' && (
+                <div className="p-4">
+                  {aiLoading && <div className="flex items-center justify-center gap-2 py-8 text-white/60"><Loader2 className="w-4 h-4 animate-spin" />VoltAI is thinking…</div>}
+                  {aiResults && (
+                    <>
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-primary/10 to-secondary/10 border border-white/10 mb-3">
+                        <div className="text-xs text-primary uppercase tracking-wider mb-1 flex items-center gap-1"><Sparkles className="w-3 h-3" />VoltAI</div>
+                        <div className="text-sm text-white/90">{aiResults.summary}</div>
+                        <div className="text-xs text-white/50 mt-1">{aiResults.products?.length || 0} products found</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {aiResults.products?.slice(0, 8).map(p => (
+                          <button key={p.slug} onClick={() => { setView({ name: 'product', slug: p.slug }); onClose(); }} className="text-left p-2 rounded-lg hover:bg-white/5 flex gap-2">
+                            <img src={p.image} alt={p.name} className="w-14 h-14 rounded-md object-cover" />
+                            <div className="flex-1 min-w-0"><div className="text-xs truncate">{p.name}</div><div className="text-sm font-semibold text-primary mt-1">{inr(p.price)}</div></div>
+                          </button>
+                        ))}
+                      </div>
+                      {aiResults.products?.length > 8 && <Button variant="outline" className="w-full mt-3 border-white/10" onClick={() => { setView({ name: 'products', filters: aiResults.parsed?.filter }); onClose(); }}>View all {aiResults.products.length} results →</Button>}
+                    </>
+                  )}
                 </div>
               )}
-              {results.categories?.length > 0 && (
+              {mode === 'quick' && !q && (
+                <div className="p-4 text-sm text-white/60">
+                  <div className="mb-3 font-medium text-white/80">Try VoltAI</div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {['ESP32 with camera under 1000', 'cheap arduino boards', 'best drone', 'raspberry pi 5 8gb', 'servo motor for robotics'].map(s => (
+                      <button key={s} onClick={() => { setQ(s); askAI(s); }} className="px-3 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 border border-primary/30 text-white/80 text-xs">{s}</button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-white/40">Or search directly by product name / SKU</div>
+                </div>
+              )}
+              {mode === 'quick' && results.categories?.length > 0 && (
                 <div className="p-3">
                   <div className="text-[11px] uppercase tracking-wider text-white/40 px-2 mb-1">Categories</div>
                   {results.categories.map(c => (
@@ -137,7 +239,7 @@ const SearchDialog = ({ open, onClose, setView }) => {
                   ))}
                 </div>
               )}
-              {results.suggestions?.length > 0 && (
+              {mode === 'quick' && results.suggestions?.length > 0 && (
                 <div className="p-3">
                   <div className="text-[11px] uppercase tracking-wider text-white/40 px-2 mb-1">Products</div>
                   {results.suggestions.map(p => (
@@ -149,9 +251,6 @@ const SearchDialog = ({ open, onClose, setView }) => {
                   ))}
                 </div>
               )}
-              {q && results.suggestions?.length === 0 && results.categories?.length === 0 && (
-                <div className="p-8 text-center text-white/50 text-sm">No matches. Try different keywords.</div>
-              )}
             </div>
           </motion.div>
         </motion.div>
@@ -160,7 +259,8 @@ const SearchDialog = ({ open, onClose, setView }) => {
   );
 };
 
-const CartSheet = ({ cart }) => {
+// -------- Cart Sheet --------
+const CartSheet = ({ cart, onCheckout }) => {
   const { items, remove, update, total } = cart;
   const gst = Math.round(total * 0.18);
   const shipping = total > 999 ? 0 : 79;
@@ -195,8 +295,8 @@ const CartSheet = ({ cart }) => {
             <div className="flex justify-between text-white/70"><span>Shipping</span><span className={shipping === 0 ? 'text-secondary' : ''}>{shipping === 0 ? 'FREE' : inr(shipping)}</span></div>
             <Separator className="bg-white/10 my-2" />
             <div className="flex justify-between text-base font-semibold"><span>Total</span><span className="text-primary">{inr(grand)}</span></div>
-            <Button className="w-full mt-3 bg-primary hover:bg-primary/90 glow-blue h-11">Checkout · {inr(grand)}</Button>
-            <p className="text-[11px] text-white/40 text-center">Secure Razorpay checkout · GST invoice included</p>
+            <Button onClick={onCheckout} className="w-full mt-3 bg-primary hover:bg-primary/90 glow-blue h-11">Checkout · {inr(grand)}</Button>
+            <p className="text-[11px] text-white/40 text-center">Secure checkout · GST invoice included</p>
           </div>
         </>
       )}
@@ -204,44 +304,7 @@ const CartSheet = ({ cart }) => {
   );
 };
 
-const ProductCard = ({ p, onOpen, onAdd, wishHas, onWish }) => {
-  const discount = p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
-  return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -4 }} transition={{ duration: 0.25 }} className="group relative rounded-2xl overflow-hidden bg-white/[0.03] border border-white/5 hover:border-white/20 hover:bg-white/[0.05] transition cursor-pointer">
-      <div onClick={onOpen} className="relative aspect-square overflow-hidden bg-black/40">
-        <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {p.bestSeller && <Badge className="bg-secondary/90 hover:bg-secondary text-white text-[10px] border-0"><Award className="w-2.5 h-2.5 mr-1" />Best Seller</Badge>}
-          {p.new && <Badge className="bg-primary/90 hover:bg-primary text-white text-[10px] border-0">NEW</Badge>}
-          {discount > 0 && <Badge className="bg-red-500/90 hover:bg-red-500 text-white text-[10px] border-0">-{discount}%</Badge>}
-        </div>
-        <button onClick={(e) => { e.stopPropagation(); onWish(p.slug); }} className="absolute top-2 right-2 w-8 h-8 rounded-full glass-strong flex items-center justify-center hover:scale-110 transition">
-          <Heart className={`w-4 h-4 ${wishHas ? 'fill-red-500 text-red-500' : 'text-white'}`} />
-        </button>
-      </div>
-      <div className="p-3.5">
-        <div className="text-[11px] uppercase tracking-wide text-white/40 mb-1">{p.brand}</div>
-        <h3 onClick={onOpen} className="text-sm font-medium leading-snug line-clamp-2 min-h-[2.5rem] hover:text-primary transition">{p.name}</h3>
-        <div className="flex items-center gap-1 mt-2 text-xs">
-          <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
-          <span className="text-white/80">{p.rating}</span>
-          <span className="text-white/40">({p.reviews})</span>
-          <span className="ml-auto text-white/40">{p.sold}+ sold</span>
-        </div>
-        <div className="mt-2.5 flex items-end justify-between">
-          <div>
-            <div className="text-lg font-semibold text-white">{inr(p.price)}</div>
-            {p.mrp > p.price && <div className="text-xs text-white/40 line-through">{inr(p.mrp)}</div>}
-          </div>
-          <Button size="sm" onClick={(e) => { e.stopPropagation(); onAdd(p); }} className="bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/30 h-8 px-3 text-xs">
-            <Plus className="w-3.5 h-3.5 mr-1" />Add
-          </Button>
-        </div>
-      </div>
-    </motion.div>
-  );
-};
-
+// -------- Section header --------
 const SectionHeader = ({ title, subtitle, icon: Ic, action }) => (
   <div className="flex items-end justify-between mb-6 gap-4">
     <div>
@@ -255,6 +318,7 @@ const SectionHeader = ({ title, subtitle, icon: Ic, action }) => (
   </div>
 );
 
+// -------- Newsletter --------
 const Newsletter = () => {
   const [email, setEmail] = useState('');
   const submit = async (e) => {
@@ -270,7 +334,7 @@ const Newsletter = () => {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs mb-4"><Gift className="w-3 h-3 text-secondary" /> First order ₹100 off</div>
             <h2 className="font-display text-3xl md:text-4xl font-bold">Get the maker newsletter</h2>
-            <p className="text-white/60 mt-2">New arrivals, deep-dive tutorials, and exclusive early-bird deals. No spam, unsubscribe anytime.</p>
+            <p className="text-white/60 mt-2">New arrivals, deep-dive tutorials, and exclusive early-bird deals.</p>
           </div>
           <form onSubmit={submit} className="flex gap-2">
             <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" className="h-12 bg-white/5 border-white/10 text-white placeholder:text-white/40" />
@@ -290,7 +354,7 @@ const Footer = ({ setView }) => (
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center"><Zap className="w-5 h-5 text-white" fill="white" /></div>
           Volt<span className="text-accent-gradient">Mart</span>
         </div>
-        <p className="text-white/50 text-sm max-w-sm leading-relaxed">India's premium electronics marketplace for engineers, makers, and industry. Genuine parts. Fast delivery. GST invoices.</p>
+        <p className="text-white/50 text-sm max-w-sm leading-relaxed">India's premium electronics marketplace for engineers, makers, and industry.</p>
         <div className="mt-6 text-sm text-white/60 space-y-1">
           <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-primary" /> Bangalore · Delhi · Mumbai</div>
           <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-primary" /> Mon-Sat, 9 AM – 8 PM IST</div>
@@ -316,7 +380,8 @@ const Footer = ({ setView }) => (
   </footer>
 );
 
-const HomeView = ({ setView, cart, wish }) => {
+// -------- Home View --------
+const HomeView = ({ setView, cart, wish, compare }) => {
   const [cats, setCats] = useState([]);
   const [brands, setBrands] = useState([]);
   const [deals, setDeals] = useState([]);
@@ -329,6 +394,9 @@ const HomeView = ({ setView, cart, wish }) => {
     fetch('/api/products?bestSeller=true&limit=10').then(r => r.json()).then(d => setBest(d.products || []));
     fetch('/api/products?trending=true&limit=8').then(r => r.json()).then(d => setTrending(d.products || []));
   }, []);
+
+  const cardProps = (p) => ({ p, onOpen: () => setView({ name: 'product', slug: p.slug }), onAdd: cart.add, wishHas: wish.has(p.slug), onWish: wish.toggle, compareHas: compare.has(p.slug), onCompare: compare.toggle });
+
   return (
     <div>
       <section className="relative overflow-hidden">
@@ -348,7 +416,7 @@ const HomeView = ({ setView, cart, wish }) => {
                 of <span className="text-accent-gradient">builders</span>.
               </h1>
               <p className="mt-6 text-white/60 text-lg max-w-lg leading-relaxed">
-                India's premium marketplace for Arduino, Raspberry Pi, sensors, robotics, drones, and 5,000+ electronics components. Genuine parts. GST invoices. Same-day dispatch.
+                India's premium marketplace for Arduino, Raspberry Pi, sensors, robotics, drones, and 5,000+ electronics components.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button size="lg" onClick={() => setView({ name: 'products' })} className="bg-primary hover:bg-primary/90 glow-blue h-12 px-6 text-base">Shop All Products<ArrowRight className="w-4 h-4 ml-2" /></Button>
@@ -373,9 +441,9 @@ const HomeView = ({ setView, cart, wish }) => {
                   <div className="text-primary font-bold text-lg">₹2,499</div>
                 </motion.div>
                 <motion.div animate={{ y: [0, 10, 0] }} transition={{ duration: 5, repeat: Infinity }} className="absolute -bottom-4 -right-4 glass-strong rounded-2xl p-4 w-52">
-                  <div className="flex items-center gap-2 text-xs text-primary mb-1"><Truck className="w-3.5 h-3.5" /> Fastest Delivery</div>
-                  <div className="font-semibold text-sm">Same-day dispatch</div>
-                  <div className="text-white/60 text-xs">To 25,000+ pincodes</div>
+                  <div className="flex items-center gap-2 text-xs text-primary mb-1"><Sparkles className="w-3.5 h-3.5" /> VoltAI Search</div>
+                  <div className="font-semibold text-sm">Ask in plain English</div>
+                  <div className="text-white/60 text-xs">"ESP32 with camera under ₹1000"</div>
                 </motion.div>
               </div>
             </motion.div>
@@ -419,16 +487,16 @@ const HomeView = ({ setView, cart, wish }) => {
       </section>
 
       <section className="container py-8">
-        <SectionHeader title="Today's Deals" subtitle="Ends in 23:59:47" icon={Flame} action={() => setView({ name: 'products', filters: { deal: true } })} />
+        <SectionHeader title="Today's Deals" subtitle="Limited-time offers, ends soon" icon={Flame} action={() => setView({ name: 'products', filters: { deal: true } })} />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {deals.map(p => <ProductCard key={p.slug} p={p} onOpen={() => setView({ name: 'product', slug: p.slug })} onAdd={cart.add} wishHas={wish.has(p.slug)} onWish={wish.toggle} />)}
+          {deals.map(p => <ProductCard key={p.slug} {...cardProps(p)} />)}
         </div>
       </section>
 
       <section className="container py-8">
         <SectionHeader title="Best Sellers" subtitle="Loved by 50,000+ engineers & makers" icon={Award} action={() => setView({ name: 'products', filters: { bestSeller: true } })} />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {best.slice(0, 10).map(p => <ProductCard key={p.slug} p={p} onOpen={() => setView({ name: 'product', slug: p.slug })} onAdd={cart.add} wishHas={wish.has(p.slug)} onWish={wish.toggle} />)}
+          {best.slice(0, 10).map(p => <ProductCard key={p.slug} {...cardProps(p)} />)}
         </div>
       </section>
 
@@ -447,7 +515,7 @@ const HomeView = ({ setView, cart, wish }) => {
       <section className="container py-8">
         <SectionHeader title="Trending Components" subtitle="What everyone is building right now" icon={TrendingUp} action={() => setView({ name: 'products', filters: { trending: true } })} />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {trending.map(p => <ProductCard key={p.slug} p={p} onOpen={() => setView({ name: 'product', slug: p.slug })} onAdd={cart.add} wishHas={wish.has(p.slug)} onWish={wish.toggle} />)}
+          {trending.map(p => <ProductCard key={p.slug} {...cardProps(p)} />)}
         </div>
       </section>
 
@@ -455,7 +523,7 @@ const HomeView = ({ setView, cart, wish }) => {
         <SectionHeader title="Why VoltMart" subtitle="Built for engineers, by engineers" />
         <div className="grid md:grid-cols-3 gap-4">
           {[
-            { i: Shield, t: 'Genuine & Warrantied', d: 'Direct from manufacturers with warranty. Zero counterfeits — guaranteed authentic Arduino, ESP32, Raspberry Pi and more.', c: 'from-primary/20 to-transparent' },
+            { i: Shield, t: 'Genuine & Warrantied', d: 'Direct from manufacturers with warranty. Zero counterfeits — guaranteed authentic components.', c: 'from-primary/20 to-transparent' },
             { i: Zap, t: 'Blazing Fast Fulfillment', d: 'Same-day dispatch on 5000+ SKUs. Delivered to 25,000+ pincodes across India in 1-3 days.', c: 'from-secondary/20 to-transparent' },
             { i: BrainCircuit, t: 'Expert Technical Support', d: 'Chat with our in-house engineers for schematic reviews, part selection & datasheet queries.', c: 'from-purple-500/20 to-transparent' },
           ].map((f, i) => (
@@ -472,12 +540,12 @@ const HomeView = ({ setView, cart, wish }) => {
         <SectionHeader title="Loved by the maker community" subtitle="4.8/5 from 12,000+ verified reviews" />
         <div className="grid md:grid-cols-3 gap-4">
           {[
-            { n: 'Rohan Verma', r: 'Robotics Engineer, IIT Delhi', t: 'Ordered 40+ ESP32 boards for our lab — every single one worked out of the box. Best pricing I have found in India. GST invoices delivered instantly.', s: 5 },
-            { n: 'Priya Sharma', r: 'Founder, RoboKids Academy', t: 'The STEM kits are premium quality and the packaging is beautiful. My students absolutely love unboxing them. Support team is genuinely helpful.', s: 5 },
-            { n: 'Arjun Patel', r: 'Hardware Startup CTO', t: 'We source all our prototyping components from VoltMart. Fast delivery to Bangalore, genuine parts, and their bulk pricing is unbeatable.', s: 5 },
+            { n: 'Rohan Verma', r: 'Robotics Engineer, IIT Delhi', t: 'Ordered 40+ ESP32 boards for our lab — every single one worked out of the box. Best pricing I have found in India.' },
+            { n: 'Priya Sharma', r: 'Founder, RoboKids Academy', t: 'The STEM kits are premium quality and the packaging is beautiful. My students absolutely love unboxing them.' },
+            { n: 'Arjun Patel', r: 'Hardware Startup CTO', t: 'We source all our prototyping components from VoltMart. Fast delivery, genuine parts, unbeatable bulk pricing.' },
           ].map((t, i) => (
             <div key={i} className="glass rounded-2xl p-6">
-              <div className="flex gap-0.5 mb-3">{Array.from({ length: t.s }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}</div>
+              <div className="flex gap-0.5 mb-3">{Array.from({ length: 5 }).map((_, j) => <Star key={j} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}</div>
               <p className="text-white/80 text-sm leading-relaxed mb-4">&ldquo;{t.t}&rdquo;</p>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center font-semibold">{t.n[0]}</div>
@@ -494,7 +562,8 @@ const HomeView = ({ setView, cart, wish }) => {
   );
 };
 
-const ProductsView = ({ initialFilters, setView, cart, wish }) => {
+// -------- Products view --------
+const ProductsView = ({ initialFilters, setView, cart, wish, compare }) => {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -504,7 +573,6 @@ const ProductsView = ({ initialFilters, setView, cart, wish }) => {
   const [sort, setSort] = useState('popular');
 
   useEffect(() => { fetch('/api/categories').then(r => r.json()).then(d => setCats(d.categories || [])); fetch('/api/brands').then(r => r.json()).then(d => setBrands(d.brands || [])); }, []);
-
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams();
@@ -515,6 +583,7 @@ const ProductsView = ({ initialFilters, setView, cart, wish }) => {
 
   const activeCat = cats.find(c => c.slug === filters.category);
   const title = activeCat ? activeCat.name : filters.deal ? "Today's Deals" : filters.bestSeller ? 'Best Sellers' : filters.trending ? 'Trending Now' : 'All Products';
+  const cardProps = (p) => ({ p, onOpen: () => setView({ name: 'product', slug: p.slug }), onAdd: cart.add, wishHas: wish.has(p.slug), onWish: wish.toggle, compareHas: compare.has(p.slug), onCompare: compare.toggle });
 
   return (
     <div className="container py-6">
@@ -593,7 +662,7 @@ const ProductsView = ({ initialFilters, setView, cart, wish }) => {
             <div className="text-center py-20 text-white/50">No products match your filters.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {products.map(p => <ProductCard key={p.slug} p={p} onOpen={() => setView({ name: 'product', slug: p.slug })} onAdd={cart.add} wishHas={wish.has(p.slug)} onWish={wish.toggle} />)}
+              {products.map(p => <ProductCard key={p.slug} {...cardProps(p)} />)}
             </div>
           )}
         </div>
@@ -602,14 +671,17 @@ const ProductsView = ({ initialFilters, setView, cart, wish }) => {
   );
 };
 
-const ProductView = ({ slug, setView, cart, wish }) => {
+// -------- Product Detail --------
+const ProductView = ({ slug, setView, cart, wish, compare }) => {
   const [data, setData] = useState(null);
   const [imgIdx, setImgIdx] = useState(0);
   const [qty, setQty] = useState(1);
+  const [zoom, setZoom] = useState(false);
   useEffect(() => { setData(null); setImgIdx(0); fetch(`/api/products/${slug}`).then(r => r.json()).then(setData); }, [slug]);
   if (!data?.product) return <div className="container py-20 text-center text-white/50">Loading…</div>;
   const p = data.product;
   const discount = p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+  const cardProps = (rp) => ({ p: rp, onOpen: () => setView({ name: 'product', slug: rp.slug }), onAdd: cart.add, wishHas: wish.has(rp.slug), onWish: wish.toggle, compareHas: compare.has(rp.slug), onCompare: compare.toggle });
 
   return (
     <div className="container py-6">
@@ -623,7 +695,7 @@ const ProductView = ({ slug, setView, cart, wish }) => {
 
       <div className="grid lg:grid-cols-2 gap-10">
         <div>
-          <div className="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/5">
+          <div className="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/5 cursor-zoom-in" onClick={() => setZoom(true)}>
             <img src={p.images[imgIdx]} alt={p.name} className="w-full h-full object-cover" />
             {discount > 0 && <Badge className="absolute top-4 left-4 bg-red-500 text-white border-0">-{discount}% OFF</Badge>}
           </div>
@@ -666,8 +738,9 @@ const ProductView = ({ slug, setView, cart, wish }) => {
             </div>
             <Button onClick={() => cart.add(p, qty)} className="flex-1 h-11 bg-primary hover:bg-primary/90 glow-blue"><ShoppingCart className="w-4 h-4 mr-2" />Add to Cart</Button>
             <Button onClick={() => wish.toggle(p.slug)} variant="outline" size="icon" className="h-11 w-11 border-white/10 hover:bg-white/5"><Heart className={`w-4 h-4 ${wish.has(p.slug) ? 'fill-red-500 text-red-500' : ''}`} /></Button>
+            <Button onClick={() => compare.toggle(p)} variant="outline" size="icon" className="h-11 w-11 border-white/10 hover:bg-white/5" title="Compare"><GitCompare className={`w-4 h-4 ${compare.has(p.slug) ? 'text-primary' : ''}`} /></Button>
           </div>
-          <Button variant="outline" className="w-full mt-2 h-11 border-secondary/40 text-secondary hover:bg-secondary/10">Buy Now with Razorpay</Button>
+          <Button onClick={() => { cart.add(p, qty); setView({ name: 'checkout' }); }} variant="outline" className="w-full mt-2 h-11 border-secondary/40 text-secondary hover:bg-secondary/10">Buy Now with Razorpay</Button>
           <div className="mt-6 grid grid-cols-3 gap-3 text-xs">
             {[{ i: Shield, t: 'Authentic' }, { i: FileText, t: 'GST Invoice' }, { i: Headphones, t: 'Tech Support' }].map((f, i) => (
               <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -685,7 +758,6 @@ const ProductView = ({ slug, setView, cart, wish }) => {
             <TabsTrigger value="desc">Description</TabsTrigger>
             <TabsTrigger value="downloads">Downloads</TabsTrigger>
             <TabsTrigger value="reviews">Reviews ({p.reviews})</TabsTrigger>
-            <TabsTrigger value="qa">Q&amp;A</TabsTrigger>
           </TabsList>
           <TabsContent value="specs" className="mt-6">
             <div className="glass rounded-2xl overflow-hidden">
@@ -697,9 +769,7 @@ const ProductView = ({ slug, setView, cart, wish }) => {
               ))}
             </div>
           </TabsContent>
-          <TabsContent value="desc" className="mt-6">
-            <div className="glass rounded-2xl p-6 text-white/80 leading-relaxed">{p.description}</div>
-          </TabsContent>
+          <TabsContent value="desc" className="mt-6"><div className="glass rounded-2xl p-6 text-white/80 leading-relaxed">{p.description}</div></TabsContent>
           <TabsContent value="downloads" className="mt-6">
             <div className="grid md:grid-cols-2 gap-3">
               {['Datasheet.pdf', 'Schematic.pdf', 'Pinout Diagram.pdf', 'Example Code.zip'].map(f => (
@@ -724,7 +794,7 @@ const ProductView = ({ slug, setView, cart, wish }) => {
                 </div>
               </div>
               <div className="mt-4 space-y-4">
-                {[{ n: 'Vikram S.', d: '2 days ago', s: 5, t: 'Genuine product, arrived in perfect condition. Works flawlessly with my existing setup.' }, { n: 'Anita R.', d: '1 week ago', s: 5, t: 'Amazing quality. Fast delivery to Chennai. Will order again.' }, { n: 'Kartik M.', d: '2 weeks ago', s: 4, t: 'Solid product for the price. Documentation could be better but works as expected.' }].map((r, i) => (
+                {[{ n: 'Vikram S.', d: '2 days ago', s: 5, t: 'Genuine product, arrived in perfect condition.' }, { n: 'Anita R.', d: '1 week ago', s: 5, t: 'Amazing quality. Fast delivery to Chennai.' }, { n: 'Kartik M.', d: '2 weeks ago', s: 4, t: 'Solid product for the price.' }].map((r, i) => (
                   <div key={i} className="pb-4 border-b border-white/5 last:border-0">
                     <div className="flex items-center gap-2 mb-1"><span className="font-medium text-sm">{r.n}</span><Badge variant="outline" className="text-[10px] border-secondary/30 text-secondary">Verified</Badge><span className="text-xs text-white/40">· {r.d}</span></div>
                     <div className="flex gap-0.5 mb-2">{Array.from({ length: r.s }).map((_, j) => <Star key={j} className="w-3 h-3 fill-yellow-400 text-yellow-400" />)}</div>
@@ -734,9 +804,6 @@ const ProductView = ({ slug, setView, cart, wish }) => {
               </div>
             </div>
           </TabsContent>
-          <TabsContent value="qa" className="mt-6">
-            <div className="glass rounded-2xl p-6 text-center text-white/60"><MessageSquare className="w-8 h-8 mx-auto mb-2 text-primary" /><div>Ask a question — our engineers respond within 4 hours.</div><Button className="mt-4 bg-primary hover:bg-primary/90">Ask Question</Button></div>
-          </TabsContent>
         </Tabs>
       </div>
 
@@ -744,19 +811,32 @@ const ProductView = ({ slug, setView, cart, wish }) => {
         <div className="mt-16">
           <h2 className="font-display text-2xl font-bold mb-6">Related Products</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {data.related.slice(0, 4).map(rp => <ProductCard key={rp.slug} p={rp} onOpen={() => setView({ name: 'product', slug: rp.slug })} onAdd={cart.add} wishHas={wish.has(rp.slug)} onWish={wish.toggle} />)}
+            {data.related.slice(0, 4).map(rp => <ProductCard key={rp.slug} {...cardProps(rp)} />)}
           </div>
         </div>
       )}
+
+      {/* Zoom modal */}
+      <AnimatePresence>
+        {zoom && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setZoom(false)} className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-6 cursor-zoom-out">
+            <img src={p.images[imgIdx]} alt={p.name} className="max-w-full max-h-full rounded-2xl" />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
+// -------- App --------
 const App = () => {
   const [view, setView] = useState({ name: 'home' });
   const [searchOpen, setSearchOpen] = useState(false);
-  const cart = useCartStore();
-  const wish = useWishStore();
+  const [authOpen, setAuthOpen] = useState(false);
+  const { user, token, loading: authLoading, login, logout, authFetch } = useAuth();
+  const cart = useCart();
+  const compare = useCompare();
+  const wish = useWish(authFetch, user);
 
   useEffect(() => {
     const handler = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true); } };
@@ -765,20 +845,27 @@ const App = () => {
   }, []);
   useEffect(() => { if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); }, [view.name, view.slug]);
 
+  const requireLogin = () => { setAuthOpen(true); };
+
   return (
     <div className="min-h-screen bg-[#05060A]">
-      <Header setView={setView} cart={cart} wish={wish} onSearchOpen={() => setSearchOpen(true)} />
+      <Header setView={setView} cart={cart} wish={wish} compare={compare} user={user} onSearchOpen={() => setSearchOpen(true)} onLogin={() => setAuthOpen(true)} onLogout={() => { logout(); setView({ name: 'home' }); }} />
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} setView={setView} />
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onSuccess={login} />
       <main>
         <AnimatePresence mode="wait">
           <motion.div key={view.name + (view.slug || '') + JSON.stringify(view.filters || {})} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-            {view.name === 'home' && <HomeView setView={setView} cart={cart} wish={wish} />}
-            {view.name === 'products' && <ProductsView initialFilters={view.filters || {}} setView={setView} cart={cart} wish={wish} />}
-            {view.name === 'product' && <ProductView slug={view.slug} setView={setView} cart={cart} wish={wish} />}
+            {view.name === 'home' && <HomeView setView={setView} cart={cart} wish={wish} compare={compare} />}
+            {view.name === 'products' && <ProductsView initialFilters={view.filters || {}} setView={setView} cart={cart} wish={wish} compare={compare} />}
+            {view.name === 'product' && <ProductView slug={view.slug} setView={setView} cart={cart} wish={wish} compare={compare} />}
+            {view.name === 'checkout' && <CheckoutView cart={cart} user={user} authFetch={authFetch} setView={setView} onLoginRequired={requireLogin} />}
+            {view.name === 'dashboard' && (user ? <DashboardView user={user} authFetch={authFetch} logout={() => { logout(); setView({ name: 'home' }); }} setView={setView} wish={wish} /> : <div className="container py-20 text-center"><Button onClick={() => setAuthOpen(true)} className="bg-primary hover:bg-primary/90">Sign in to view</Button></div>)}
+            {view.name === 'admin' && (user ? <AdminView user={user} authFetch={authFetch} setView={setView} logout={() => { logout(); setView({ name: 'home' }); }} /> : <div className="container py-20 text-center"><Button onClick={() => setAuthOpen(true)} className="bg-primary hover:bg-primary/90">Sign in as admin</Button></div>)}
+            {view.name === 'compare' && <CompareView compare={compare} setView={setView} cart={cart} />}
           </motion.div>
         </AnimatePresence>
       </main>
-      {view.name !== 'home' && <Footer setView={setView} />}
+      {['home', 'products', 'product'].includes(view.name) && view.name !== 'home' && <Footer setView={setView} />}
     </div>
   );
 };
