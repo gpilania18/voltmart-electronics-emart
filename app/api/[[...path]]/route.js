@@ -291,7 +291,70 @@ async function handle(request, params) {
         return json({ ok: true });
       }
       if (parts[1] === 'coupons' && method === 'GET') return json({ coupons: await db.collection('coupons').find({}, { projection: { _id: 0 } }).toArray() });
-      if (parts[1] === 'coupons' && method === 'POST') { const c = await request.json(); c.code = c.code.toUpperCase(); c.active = true; await db.collection('coupons').insertOne(c); return json({ ok: true }); }
+      if (parts[1] === 'coupons' && method === 'POST') { const c = await request.json(); c.code = c.code.toUpperCase(); c.active = c.active !== false; await db.collection('coupons').updateOne({ code: c.code }, { $set: c }, { upsert: true }); return json({ ok: true, coupon: c }); }
+      if (parts[1] === 'coupons' && parts[2] && method === 'PATCH') { const updates = await request.json(); delete updates._id; delete updates.code; await db.collection('coupons').updateOne({ code: parts[2].toUpperCase() }, { $set: updates }); return json({ ok: true }); }
+      if (parts[1] === 'coupons' && parts[2] && method === 'DELETE') { await db.collection('coupons').deleteOne({ code: parts[2].toUpperCase() }); return json({ ok: true }); }
+
+      // BULK IMPORT
+      if (parts[1] === 'bulk-import' && method === 'POST') {
+        const { products: incoming = [] } = await request.json();
+        if (!Array.isArray(incoming) || !incoming.length) return err('No products to import');
+        const results = { created: 0, skipped: 0, errors: [] };
+        for (const p of incoming) {
+          try {
+            if (!p.name || !p.price || !p.image) { results.skipped++; results.errors.push({ name: p.name || 'unnamed', reason: 'Missing name/price/image' }); continue; }
+            const doc = { ...p };
+            doc.id = 'p_' + uuid().slice(0, 8);
+            doc.slug = (p.name).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + doc.id.slice(-4);
+            doc.price = Number(p.price); doc.mrp = Number(p.mrp || p.price); doc.stock = Number(p.stock || 100);
+            doc.brand = p.brand || 'arduino'; doc.category = p.category || 'modules';
+            doc.rating = Number(p.rating || 4.5); doc.reviews = 0; doc.sold = 0;
+            doc.images = p.images || [p.image];
+            doc.specs = p.specs || {};
+            doc.createdAt = Date.now();
+            await db.collection('products').insertOne(doc);
+            results.created++;
+          } catch (e) { results.skipped++; results.errors.push({ name: p.name, reason: e.message }); }
+        }
+        return json(results);
+      }
+
+      // INSIGHTS
+      if (parts[1] === 'insights' && method === 'GET') {
+        const [allProducts, allOrders] = await Promise.all([
+          db.collection('products').find({}, { projection: { _id: 0 } }).toArray(),
+          db.collection('orders').find({}).toArray(),
+        ]);
+        // Sold count per slug from orders
+        const soldMap = {};
+        allOrders.forEach(o => o.items.forEach(i => { soldMap[i.slug] = (soldMap[i.slug] || 0) + i.qty; }));
+        const withSold = allProducts.map(p => ({ ...p, actualSold: soldMap[p.slug] || 0 }));
+
+        const topSelling = [...withSold].sort((a, b) => (b.actualSold * b.price) - (a.actualSold * a.price)).slice(0, 8).map(p => ({ slug: p.slug, name: p.name, image: p.image, price: p.price, sold: p.actualSold, revenue: p.actualSold * p.price }));
+        const lowStock = allProducts.filter(p => p.stock > 0 && p.stock < 20).sort((a, b) => a.stock - b.stock).slice(0, 10);
+        const outOfStock = allProducts.filter(p => !p.stock || p.stock === 0);
+        const totalInventoryValue = allProducts.reduce((s, p) => s + p.price * (p.stock || 0), 0);
+        const totalProductCount = allProducts.length;
+        const totalStock = allProducts.reduce((s, p) => s + (p.stock || 0), 0);
+        const avgPrice = totalProductCount ? Math.round(allProducts.reduce((s, p) => s + p.price, 0) / totalProductCount) : 0;
+        // Category breakdown
+        const catStats = {};
+        allProducts.forEach(p => {
+          if (!catStats[p.category]) catStats[p.category] = { count: 0, stock: 0, value: 0, avgRating: 0, ratings: 0 };
+          catStats[p.category].count++;
+          catStats[p.category].stock += (p.stock || 0);
+          catStats[p.category].value += p.price * (p.stock || 0);
+          catStats[p.category].avgRating += (p.rating || 0);
+          catStats[p.category].ratings++;
+        });
+        const categoryBreakdown = Object.entries(catStats).map(([name, s]) => ({ name, count: s.count, stock: s.stock, value: s.value, avgRating: (s.avgRating / s.ratings).toFixed(2) })).sort((a, b) => b.value - a.value);
+        // Brand breakdown
+        const brandStats = {};
+        allProducts.forEach(p => { if (!brandStats[p.brand]) brandStats[p.brand] = 0; brandStats[p.brand]++; });
+        const brandBreakdown = Object.entries(brandStats).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+        return json({ topSelling, lowStock, outOfStock, totalInventoryValue, totalProductCount, totalStock, avgPrice, categoryBreakdown, brandBreakdown });
+      }
     }
   }
 

@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { LayoutDashboard, Package, Users, ShoppingBag, TrendingUp, DollarSign, ArrowUpRight, ArrowDownRight, Tag, MessageSquare, FileText, Settings, LogOut, ChevronRight, Search, Plus, Trash2, Edit, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Package, Users, ShoppingBag, TrendingUp, DollarSign, ArrowUpRight, ArrowDownRight, Tag, MessageSquare, FileText, Settings, LogOut, ChevronRight, Search, Plus, Trash2, Edit, ArrowLeft, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { inr } from '@/lib/store';
 import ProductFormModal from './ProductFormModal';
+import { CouponFormModal, BulkImportModal, InsightsTab } from './AdminExtras';
 
 const COLORS = ['#0F62FE', '#00C896', '#a855f7', '#f59e0b', '#ec4899'];
 
@@ -25,6 +26,9 @@ export default function AdminView({ user, authFetch, setView, logout }) {
   const [productSearch, setProductSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [couponFormOpen, setCouponFormOpen] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'admin') return;
@@ -85,12 +89,15 @@ export default function AdminView({ user, authFetch, setView, logout }) {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="bg-white/5 border border-white/10 flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="insights">Insights</TabsTrigger>
             <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
             <TabsTrigger value="products">Products ({products.length})</TabsTrigger>
             <TabsTrigger value="customers">Customers ({users.length})</TabsTrigger>
             <TabsTrigger value="coupons">Coupons</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="insights"><InsightsTab authFetch={authFetch} setView={setView} /></TabsContent>
 
           <TabsContent value="overview" className="mt-6 space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -214,7 +221,8 @@ export default function AdminView({ user, authFetch, setView, logout }) {
                 <Input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products, SKU, brand…" className="pl-9 bg-white/5 border-white/10" />
               </div>
               <div className="text-sm text-white/60">{filteredProducts.length} of {products.length} products</div>
-              <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="ml-auto bg-primary hover:bg-primary/90 glow-blue"><Plus className="w-4 h-4 mr-1.5" />Add Product</Button>
+              <Button onClick={() => setBulkOpen(true)} variant="outline" className="border-white/10 ml-auto"><Upload className="w-4 h-4 mr-1.5" />Bulk Import</Button>
+              <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="bg-primary hover:bg-primary/90 glow-blue"><Plus className="w-4 h-4 mr-1.5" />Add Product</Button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {filteredProducts.map(p => (
@@ -247,6 +255,7 @@ export default function AdminView({ user, authFetch, setView, logout }) {
               )}
             </div>
             <ProductFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); }} product={editing} onSaved={onSaved} authFetch={authFetch} categories={categories} brands={brands} />
+            <BulkImportModal open={bulkOpen} onClose={() => setBulkOpen(false)} onDone={loadProducts} authFetch={authFetch} />
           </TabsContent>
 
           <TabsContent value="customers" className="mt-6">
@@ -269,17 +278,32 @@ export default function AdminView({ user, authFetch, setView, logout }) {
           </TabsContent>
 
           <TabsContent value="coupons" className="mt-6">
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-white/60">{coupons.length} coupon{coupons.length !== 1 ? 's' : ''}</div>
+              <Button onClick={() => { setEditingCoupon(null); setCouponFormOpen(true); }} className="bg-primary hover:bg-primary/90 glow-blue"><Plus className="w-4 h-4 mr-1.5" />Create Coupon</Button>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
               {coupons.map(c => (
-                <div key={c.code} className="glass rounded-2xl p-5 relative overflow-hidden">
+                <div key={c.code} className="glass rounded-2xl p-5 relative overflow-hidden group">
                   <div className="absolute -top-6 -right-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl" />
-                  <div className="flex items-center justify-between mb-2"><Tag className="w-4 h-4 text-primary" /><Badge className={c.active ? 'bg-secondary/10 text-secondary border-0' : 'bg-white/5'}>{c.active ? 'Active' : 'Inactive'}</Badge></div>
-                  <div className="font-mono text-lg font-bold">{c.code}</div>
-                  <div className="text-sm text-white/60 mt-1">{c.description}</div>
-                  <div className="text-xs text-white/40 mt-2">{c.type === 'percent' ? `${c.value}% off` : `₹${c.value} off`} · Min ₹{c.minAmount}</div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <Tag className="w-4 h-4 text-primary" />
+                      <Badge className={c.active ? 'bg-secondary/10 text-secondary border-0' : 'bg-white/5 border-white/10'}>{c.active ? 'Active' : 'Inactive'}</Badge>
+                    </div>
+                    <div className="font-mono text-lg font-bold">{c.code}</div>
+                    <div className="text-sm text-white/60 mt-1">{c.description}</div>
+                    <div className="text-xs text-white/40 mt-2">{c.type === 'percent' ? `${c.value}% off` : `₹${c.value} off`} · Min ₹{c.minAmount} · Max ₹{c.maxDiscount}</div>
+                    <div className="mt-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                      <Button size="sm" variant="outline" onClick={() => { setEditingCoupon(c); setCouponFormOpen(true); }} className="border-white/10 h-8 flex-1"><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
+                      <Button size="sm" variant="outline" onClick={async () => { if (confirm(`Delete coupon ${c.code}?`)) { await authFetch(`/api/admin/coupons/${c.code}`, { method: 'DELETE' }); setCoupons(coupons.filter(x => x.code !== c.code)); toast.success(`Deleted ${c.code}`); } }} className="border-red-500/30 text-red-400 hover:bg-red-500/10 h-8"><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
+                  </div>
                 </div>
               ))}
+              {coupons.length === 0 && <div className="col-span-full glass rounded-2xl p-12 text-center text-white/50">No coupons yet — click "Create Coupon"</div>}
             </div>
+            <CouponFormModal open={couponFormOpen} onClose={() => { setCouponFormOpen(false); setEditingCoupon(null); }} coupon={editingCoupon} onSaved={() => authFetch('/api/admin/coupons').then(r => r.json()).then(d => setCoupons(d.coupons || []))} authFetch={authFetch} />
           </TabsContent>
 
           <TabsContent value="settings" className="mt-6">

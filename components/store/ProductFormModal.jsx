@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 
-const empty = { name: '', brand: 'arduino', category: 'arduino', price: 999, mrp: 1299, stock: 100, image: '', short: '', description: '', sku: '', specs: [{ k: '', v: '' }], bestSeller: false, deal: false, trending: false, featured: false, new: true };
+const empty = { name: '', brand: 'arduino', category: 'arduino', price: 999, mrp: 1299, stock: 100, image: '', short: '', description: '', sku: '', specs: [{ k: '', v: '' }], downloads: [{ name: '', url: '' }], bestSeller: false, deal: false, trending: false, featured: false, new: true };
 
 export default function ProductFormModal({ open, onClose, product, onSaved, authFetch, categories, brands }) {
   const [form, setForm] = useState(empty);
@@ -21,6 +21,7 @@ export default function ProductFormModal({ open, onClose, product, onSaved, auth
       setForm({
         ...product,
         specs: product.specs ? Object.entries(product.specs).map(([k, v]) => ({ k, v })) : [{ k: '', v: '' }],
+        downloads: product.downloads?.length ? product.downloads : [{ name: '', url: '' }],
       });
     } else {
       setForm(empty);
@@ -31,15 +32,20 @@ export default function ProductFormModal({ open, onClose, product, onSaved, auth
   const setSpec = (i, key, val) => setForm(f => ({ ...f, specs: f.specs.map((s, idx) => idx === i ? { ...s, [key]: val } : s) }));
   const addSpec = () => setForm(f => ({ ...f, specs: [...f.specs, { k: '', v: '' }] }));
   const removeSpec = (i) => setForm(f => ({ ...f, specs: f.specs.filter((_, idx) => idx !== i) }));
+  const setDownload = (i, key, val) => setForm(f => ({ ...f, downloads: f.downloads.map((d, idx) => idx === i ? { ...d, [key]: val } : d) }));
+  const addDownload = () => setForm(f => ({ ...f, downloads: [...f.downloads, { name: '', url: '' }] }));
+  const removeDownload = (i) => setForm(f => ({ ...f, downloads: f.downloads.filter((_, idx) => idx !== i) }));
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     const specs = {};
     form.specs.forEach(s => { if (s.k && s.v) specs[s.k] = s.v; });
+    const downloads = form.downloads.filter(d => d.name && d.url);
     const payload = {
       ...form,
       specs,
+      downloads,
       price: Number(form.price),
       mrp: Number(form.mrp),
       stock: Number(form.stock),
@@ -156,6 +162,23 @@ export default function ProductFormModal({ open, onClose, product, onSaved, auth
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs text-white/60">Downloads (Datasheets, Manuals, Code)</label>
+                  <Button type="button" size="sm" variant="outline" onClick={addDownload} className="border-white/10 h-7 text-xs"><Plus className="w-3 h-3 mr-1" />Add file</Button>
+                </div>
+                <div className="space-y-2">
+                  {form.downloads.map((d, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input value={d.name} onChange={e => setDownload(i, 'name', e.target.value)} placeholder="File name (e.g. Datasheet.pdf)" className="bg-white/5 border-white/10 flex-1" />
+                      <Input value={d.url} onChange={e => setDownload(i, 'url', e.target.value)} placeholder="https://…" className="bg-white/5 border-white/10 flex-1" />
+                      {form.downloads.length > 1 && <button type="button" onClick={() => removeDownload(i)} className="w-9 h-9 rounded-md bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-white/40 mt-1">Attach datasheets, schematics, pinout diagrams, example code — anything downloadable</p>
               </div>
 
               <div>

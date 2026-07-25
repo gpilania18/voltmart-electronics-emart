@@ -772,10 +772,10 @@ const ProductView = ({ slug, setView, cart, wish, compare }) => {
           <TabsContent value="desc" className="mt-6"><div className="glass rounded-2xl p-6 text-white/80 leading-relaxed">{p.description}</div></TabsContent>
           <TabsContent value="downloads" className="mt-6">
             <div className="grid md:grid-cols-2 gap-3">
-              {['Datasheet.pdf', 'Schematic.pdf', 'Pinout Diagram.pdf', 'Example Code.zip'].map(f => (
-                <a key={f} className="flex items-center gap-3 p-4 rounded-xl glass hover:border-primary/30 border border-transparent transition cursor-pointer">
+              {(p.downloads?.length ? p.downloads : [{ name: 'Datasheet.pdf', url: '#' }, { name: 'Schematic.pdf', url: '#' }, { name: 'Pinout Diagram.pdf', url: '#' }, { name: 'Example Code.zip', url: '#' }]).map(f => (
+                <a key={f.name} href={f.url || '#'} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-xl glass hover:border-primary/30 border border-transparent transition cursor-pointer">
                   <FileText className="w-5 h-5 text-primary" />
-                  <div className="flex-1"><div className="text-sm font-medium">{f}</div><div className="text-xs text-white/50">Click to download</div></div>
+                  <div className="flex-1"><div className="text-sm font-medium">{f.name}</div><div className="text-xs text-white/50">{f.url && f.url !== '#' ? 'Click to download' : 'Sample document'}</div></div>
                   <Download className="w-4 h-4 text-white/50" />
                 </a>
               ))}
