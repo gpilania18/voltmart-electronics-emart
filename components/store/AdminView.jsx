@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { inr } from '@/lib/store';
+import ProductFormModal from './ProductFormModal';
 
 const COLORS = ['#0F62FE', '#00C896', '#a855f7', '#f59e0b', '#ec4899'];
 
@@ -18,16 +19,40 @@ export default function AdminView({ user, authFetch, setView, logout }) {
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
   const [coupons, setCoupons] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [tab, setTab] = useState('overview');
+  const [productSearch, setProductSearch] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'admin') return;
     authFetch('/api/admin/stats').then(r => r.json()).then(setStats);
     authFetch('/api/admin/orders').then(r => r.json()).then(d => setOrders(d.orders || []));
     authFetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
-    fetch('/api/products?limit=60').then(r => r.json()).then(d => setProducts(d.products || []));
+    loadProducts();
     authFetch('/api/admin/coupons').then(r => r.json()).then(d => setCoupons(d.coupons || []));
+    fetch('/api/categories').then(r => r.json()).then(d => setCategories(d.categories || []));
+    fetch('/api/brands').then(r => r.json()).then(d => setBrands(d.brands || []));
   }, [user]);
+
+  const loadProducts = () => fetch('/api/products?limit=60').then(r => r.json()).then(d => setProducts(d.products || []));
+
+  const deleteProduct = async (slug, name) => {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    const r = await authFetch(`/api/admin/products/${slug}`, { method: 'DELETE' });
+    if (r.ok) { setProducts(products.filter(p => p.slug !== slug)); toast.success(`Deleted ${name}`); }
+    else toast.error('Delete failed');
+  };
+
+  const onSaved = (product) => {
+    if (editing) setProducts(products.map(p => p.slug === editing.slug ? product : p));
+    else setProducts([product, ...products]);
+    setEditing(null);
+  };
+
+  const filteredProducts = productSearch.trim() ? products.filter(p => (p.name + ' ' + p.sku + ' ' + p.brand + ' ' + p.category).toLowerCase().includes(productSearch.toLowerCase())) : products;
 
   if (user?.role !== 'admin') {
     return (
@@ -183,20 +208,45 @@ export default function AdminView({ user, authFetch, setView, logout }) {
           </TabsContent>
 
           <TabsContent value="products" className="mt-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {products.map(p => (
-                <div key={p.slug} className="glass rounded-xl overflow-hidden">
-                  <img src={p.image} alt={p.name} className="w-full aspect-square object-cover" />
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                <Input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search products, SKU, brand…" className="pl-9 bg-white/5 border-white/10" />
+              </div>
+              <div className="text-sm text-white/60">{filteredProducts.length} of {products.length} products</div>
+              <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="ml-auto bg-primary hover:bg-primary/90 glow-blue"><Plus className="w-4 h-4 mr-1.5" />Add Product</Button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {filteredProducts.map(p => (
+                <div key={p.slug} className="group glass rounded-xl overflow-hidden relative">
+                  <div className="relative aspect-square overflow-hidden">
+                    <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                      <Button size="icon" onClick={() => { setEditing(p); setFormOpen(true); }} className="w-9 h-9 bg-primary hover:bg-primary/90"><Edit className="w-4 h-4" /></Button>
+                      <Button size="icon" onClick={() => deleteProduct(p.slug, p.name)} className="w-9 h-9 bg-red-500/90 hover:bg-red-500"><Trash2 className="w-4 h-4" /></Button>
+                    </div>
+                    <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5">
+                      {p.bestSeller && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary text-white">BEST</span>}
+                      {p.new && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary text-white">NEW</span>}
+                    </div>
+                  </div>
                   <div className="p-2">
+                    <div className="text-[10px] uppercase text-white/40">{p.brand}</div>
                     <div className="text-xs font-medium line-clamp-2 mb-1">{p.name}</div>
                     <div className="flex items-center justify-between">
                       <span className="text-primary font-semibold text-sm">{inr(p.price)}</span>
-                      <span className="text-xs text-white/50">Stock: {p.stock}</span>
+                      <span className={`text-[10px] ${p.stock > 20 ? 'text-secondary' : p.stock > 0 ? 'text-orange-400' : 'text-red-400'}`}>Stock: {p.stock}</span>
                     </div>
                   </div>
                 </div>
               ))}
+              {filteredProducts.length === 0 && (
+                <div className="col-span-full glass rounded-2xl p-12 text-center text-white/50">
+                  {productSearch ? 'No products match your search' : 'No products yet — click "Add Product"'}
+                </div>
+              )}
             </div>
+            <ProductFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); }} product={editing} onSaved={onSaved} authFetch={authFetch} categories={categories} brands={brands} />
           </TabsContent>
 
           <TabsContent value="customers" className="mt-6">

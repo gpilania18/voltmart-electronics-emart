@@ -278,6 +278,14 @@ async function handle(request, params) {
         await db.collection('products').insertOne(p);
         return json({ product: { ...p, _id: undefined } });
       }
+      if (parts[1] === 'products' && parts[2] && method === 'PATCH') {
+        const updates = await request.json();
+        delete updates._id; delete updates.slug; delete updates.id;
+        if (updates.image && (!updates.images || !updates.images.length)) updates.images = [updates.image];
+        await db.collection('products').updateOne({ slug: parts[2] }, { $set: updates });
+        const updated = await db.collection('products').findOne({ slug: parts[2] }, { projection: { _id: 0 } });
+        return json({ product: updated });
+      }
       if (parts[1] === 'products' && parts[2] && method === 'DELETE') {
         await db.collection('products').deleteOne({ slug: parts[2] });
         return json({ ok: true });
