@@ -47,7 +47,7 @@ def test_endpoint(name, method, url, expected_status=200, json_body=None, valida
         # Parse JSON response
         try:
             data = response.json()
-        except:
+        except Exception:
             if expected_status == 200:
                 print(f"   ❌ FAILED: Could not parse JSON response")
                 print(f"   Response: {response.text[:500]}")
